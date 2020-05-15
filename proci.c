@@ -99,7 +99,7 @@ static ssize_t mywrite(struct file *file, const char __user *ubuf, size_t count,
 
 	printk( KERN_DEBUG "write handler\n");
 	int num,c,i,m;
-	char buf[BUFSIZE];
+	char *buf = kmalloc(BUFSIZE*50, 0);
 	if(*ppos > 0 || count > BUFSIZE)
 		return -EFAULT;
 	if(raw_copy_from_user(buf,ubuf,count))
@@ -138,8 +138,7 @@ u64 nsec_to_clock_t(u64 x)
 }
 static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t *ppos) 
 {
-
-	char buf[BUFSIZE];
+	char *buf = kmalloc(BUFSIZE*1000, 0);
 	printk( KERN_DEBUG "read handler\n");
 	if(*ppos > 0 || count < BUFSIZE)
 		return 0;
@@ -193,6 +192,16 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
 				,task_list->acct_vm_mem1
 				/*,task_list->mm->total_vm*/
 				/*,task_list->active_mm->total_vm*/	);
+		
+		len  += sprintf(buf+len, "read handler1, pComm = %s, pid = %d, user = %d, priority = %d, acct_vm_mem1 = %d\n" ,
+				task_list->comm,
+				task_list->pid, 
+				task_list->cred->uid,
+				task_list->prio
+				,task_list->acct_vm_mem1
+				/*,task_list->mm->total_vm*/
+				/*,task_list->active_mm->total_vm*/);
+		
 		if (task_list->mm)
 			printk( KERN_DEBUG "total_vm = %d\n", task_list->mm->total_vm);
 		if (task_list->active_mm)
@@ -293,6 +302,13 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
                 	//cpuUsage = (total_time_e - total_time_s)* 10000/(uptime_e - uptime_s); // asctual cpu usage
                 	cpuUsage = (total_time_e - total_time_s)* 10000/(uptime_e - uptime_s); // asctual cpu usage
 
+                len  += sprintf(buf+len, "com=%s, pid=%d, CPU usage * 100 =%lld, CPU average usage * 100 = %lld,  seconds=%lld\n"
+				,task_list->comm
+				,task_list->pid
+				,cpuUsage
+				,cpu_usage
+				,seconds
+				);
 
 		printk( KERN_DEBUG "command=%s, uptime_s=%d,   uptime_e=%d,   tot_time_s=%d, tot_time_e=%d, CPU usage * 100 =%lld, CPU average usage * 100 = %lld,utime_jiffies =%d, stime_jiffies=%d, utime=%lld, stime=%lld, NSEC_PER_SEC=%d, HZ=%lld, bottomtime=%d, start_time %d, utime=%d, stime=%d, total_time=%lld, uptime=%lld, seconds=%lld\n",task_list->comm,  uptime_s,   uptime_e, total_time_s, total_time_e, cpuUsage, cpu_usage, utime_jiffies,stime_jiffies, utime, stime, NSEC_PER_SEC, HZ,ktime_get_coarse_boottime(),  start, utime, stime, total_time, uptime, seconds);
 
@@ -329,6 +345,8 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
 		return -EFAULT;
 	*ppos = len;
 
+
+	kfree(buf);
 	return len;
 }
 

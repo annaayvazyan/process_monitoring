@@ -2,6 +2,8 @@ KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 
 obj-m := proci.o
 
+proci-objs := ./utils.o
+
 PWD := $(shell pwd)
 
 all:
