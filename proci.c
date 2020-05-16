@@ -1,35 +1,27 @@
 
 #include<linux/module.h>
-#include<linux/kernel.h>
 #include <linux/proc_fs.h>
 #include<linux/sched/signal.h>
 #include <linux/types.h>
 #include <linux/ktime.h>
 #include <asm/param.h>
 #include <linux/sched/cputime.h>
-#include <linux/jiffies.h>
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/time.h>
-#include <linux/kernel.h>
 #include <linux/kernel_stat.h>
-#include <linux/tty.h>
 #include <linux/string.h>
 #include <linux/mman.h>
 #include <linux/sched/mm.h>
-#include <linux/sched/numa_balancing.h>
-#include <linux/sched/task_stack.h>
-#include <linux/sched/task.h>
+//#include <linux/sched/numa_balancing.h>
+//#include <linux/sched/task_stack.h>
+//#include <linux/sched/task.h>
 #include <linux/sched/cputime.h>
-#include <linux/proc_fs.h>
-#include <linux/ioport.h>
-#include <linux/uaccess.h>
+//#include <linux/proc_fs.h>
+//#include <linux/ioport.h>
+//#include <linux/uaccess.h>
 #include <linux/io.h>
 #include <linux/mm.h>
-#include <linux/hugetlb.h>
-#include <linux/pagemap.h>
-#include <linux/swap.h>
-#include <linux/smp.h>
 #include <linux/signal.h>
 #include <linux/highmem.h>
 #include <linux/file.h>
@@ -37,36 +29,19 @@
 #include <linux/times.h>
 #include <linux/cpuset.h>
 #include <linux/rcupdate.h>
-#include <linux/delayacct.h>
-#include <linux/seq_file.h>
-#include <linux/pid_namespace.h>
-#include <linux/prctl.h>
-#include <linux/ptrace.h>
 #include <linux/tracehook.h>
-#include <linux/string_helpers.h>
-#include <linux/user_namespace.h>
 #include <linux/fs_struct.h>
-#include<linux/syscalls.h> //We're a syscall
-#include<linux/sched.h> //Needed for the for_each_process() macro
-#include<linux/jiffies.h> //Needed to manage the time
-#include<asm/uaccess.h> //Needed to use copy_to_user
+#include <linux/sched.h> //Needed for the for_each_process() macro
+#include <linux/jiffies.h> //Needed to manage the time
+#include <asm/uaccess.h> //Needed to use copy_to_user
 #include <linux/tty.h>
 #include <linux/linkage.h>
-#include <linux/module.h>	/* Needed by all modules */
-#include <linux/kernel.h>	/* Needed for KERN_INFO */
 #include <linux/init.h>		/* Needed for the macros */
 #include <linux/kthread.h>
-#include <linux/sched.h>
-#include <asm/uaccess.h>
-#include <linux/string.h>
-#include <linux/jiffies.h>
-#include <linux/tty.h>
 #include <linux/slab.h>
 #include <linux/semaphore.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
-#include <asm/uaccess.h>
-#include <linux/syscalls.h>
 #include "utils.h"
 
 
@@ -99,9 +74,12 @@ int read_proc(char *buf,char **start,off_t offset,int count,int *eof,void *data 
 
 
 struct h_struct {
-    struct task_struct* data;
+    //struct task_struct* data;
+    u64 pid;
+    struct time_info* tm_info; //is kept for calculating cpu_load for each proc
     int state;
-    /* other driver specific fields */
+    
+    
     struct hlist_node node;
 };
 
@@ -133,44 +111,107 @@ static ssize_t mywrite(struct file *file, const char __user *ubuf, size_t count,
 
 
 
-#include <linux/types.h>
-
-u64 nsec_to_clock_t(u64 x)
-{
-#if (NSEC_PER_SEC % USER_HZ) == 0
-	return div_u64(x, NSEC_PER_SEC / USER_HZ);
-#elif (USER_HZ % 512) == 0
-	return div_u64(x * USER_HZ / 512, NSEC_PER_SEC / 512);
-#else
-	/*
-         * max relative error 5.7e-8 (1.8s per year) for USER_HZ <= 1024,
-         * overflow after 64.99 years.
-         * exact for HZ=60, 72, 90, 120, 144, 180, 300, 600, 900, ...
-         */
-	return div_u64(x * 9, (9ull * NSEC_PER_SEC + (USER_HZ / 2)) / USER_HZ);
-#endif
-}
 
 void collect_process_info(void)
 {
+    printk( KERN_DEBUG "collect_process_info : ");            
     struct task_struct* curr;
 	for_each_process(curr) {
-		printk( KERN_DEBUG "collect_process_info: pid = %10d, command = %15s\n", curr->pid, curr->comm);        
+		printk( KERN_DEBUG "collect_process_info : pid = %10d, command = %15s\n, utime=%d, stime=%d", curr->pid, curr->comm, curr->utime, curr->stime);        
         struct h_struct *task = kmalloc(sizeof(struct h_struct), GFP_NOWAIT);
         //task->data = tasks[210];
-        task->data = curr;
+        task->tm_info = kmalloc(sizeof(struct time_info), GFP_NOWAIT);
+        set_time_info(task->tm_info, curr);
+        task->tm_info->uptime = ktime_get_coarse_boottime(); // kep for each process to be accurate in cpu_load calculation
         task->state = 1; // alive
-        hash_add(task_hash, &task->node, task->data->pid);
+        task->pid = curr->pid;
+        hash_add(task_hash, &task->node, task->pid);
     }
 }
 
+struct cpu_load compute_cpu_load(struct time_info* time_info_s, struct time_info* time_info_e)
+{
+    struct cpu_load a_cpu_load = {
+        .ucpu_load = 0,
+        .scpu_load = 0,
+    };
+    u64 interval =  time_info_e->uptime - time_info_s->uptime;
+	printk( KERN_DEBUG "compute_cpu_load : interval=%d\n", interval);
+
+    if (interval == 0)
+        return a_cpu_load;
+
+    u64 total_utime_s = time_info_s->utime + time_info_s->cutime;
+    u64 total_utime_e = time_info_e->utime + time_info_e->cutime;
+	printk( KERN_DEBUG "compute_cpu_load : total_utime_s=%d total_utime_e=%d\n", total_utime_s, total_utime_e);    
+    u64 u_cpu_usage = (total_utime_e - total_utime_s)* 10000/(interval); // actual cpu usage in user space
+
+    u64 total_stime_s = time_info_s->stime + time_info_s->cstime;
+    u64 total_stime_e = time_info_e->stime + time_info_e->cstime;
+	printk( KERN_DEBUG "compute_cpu_load : total_stime_s=%d total_stime_e=%d\n", total_stime_s, total_stime_e);        
+    u64 s_cpu_usage = (total_stime_e - total_stime_s)* 10000/(interval); // actual cpu usage in user space
+    a_cpu_load.ucpu_load = u_cpu_usage;
+    a_cpu_load.scpu_load = s_cpu_usage;
+    return a_cpu_load;
+}
+
+struct cpu_load compute_average_cpu_load(struct time_info* tm_info)
+{
+    u64 interval = tm_info->uptime - tm_info->start_time;
+    u64 total_utime = tm_info->utime + tm_info->cutime;
+    u64 total_stime = tm_info->stime + tm_info->cstime;
+    u64 u_cpu_usage = (total_utime)* 10000/(interval); // actual cpu usage in user space
+    u64 s_cpu_usage = (total_stime)* 10000/(interval); // actual cpu usage in user space
+
+    struct cpu_load avg_cpu_load = {
+        .ucpu_load = u_cpu_usage,
+        .scpu_load = s_cpu_usage,
+    };
+    return avg_cpu_load;
+}
+
+
+
+void compute_cpu_loads(struct collected_data * col_data)
+{
+	printk( KERN_DEBUG "compute_cpu_loads :\n");
+    struct h_struct *entry;
+    struct time_info time_info_s;
+    struct time_info time_info_e;
+
+	printk( KERN_DEBUG "compute_cpu_loads : hash_for_each_possible\n");
+    hash_for_each_possible(task_hash, entry, node, col_data->task->pid) {
+        if (entry->pid == col_data->task->pid) {
+	        printk( KERN_DEBUG "compute_cpu_loads : hash_for_each_possible loop pid=%d, utime=%d, stime=%d\n", entry->pid, entry->tm_info->utime, entry->tm_info->stime);
+	        printk( KERN_DEBUG "compute_cpu_loads : calling set_time_info\n");  
+            time_info_s = *(entry->tm_info);
+            break;
+        }
+    }
+	printk( KERN_DEBUG "compute_cpu_loads : calling set_time_info for e\n");
+    set_time_info(&time_info_e, col_data->task);
+    time_info_e.uptime = ktime_get_coarse_boottime();
+    
+    col_data->a_cpu_load = kmalloc(sizeof(struct cpu_load), GFP_NOWAIT);
+	printk( KERN_DEBUG "compute_cpu_loads : calling compute_cpu_load\n");    
+    *(col_data->a_cpu_load ) = compute_cpu_load(&time_info_s, &time_info_e);
+	printk( KERN_DEBUG "compute_cpu_loads : %s calling compute_average_cpu_load\n", cpu_load_to_string(col_data->a_cpu_load));    
+    col_data->avg_cpu_load = kmalloc(sizeof(struct cpu_load), GFP_NOWAIT);
+    *(col_data->avg_cpu_load ) = compute_average_cpu_load(&time_info_e);
+
+}
 
 struct collected_data * collect_info_for_process (struct task_struct* tsk)
 {
+  
+	printk( KERN_DEBUG "collect_info_for_process :\n");
     struct collected_data *coll = kmalloc(sizeof(struct collected_data), GFP_NOWAIT);
-    coll->cpu_load = 97;
+    //coll->a_cpu_load ucpu_load = 97;
     coll->mem_load = 9644;
     coll->task = tsk;
+
+	printk( KERN_DEBUG "collect_info_for_process : calling compute_cpu_loads\n");
+    compute_cpu_loads(coll);
     return coll; 
 }
 
@@ -191,6 +232,8 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
     printk( KERN_DEBUG "myread: calling collect_process_info\n" );
     // collect data of processes once to use it in further calculations( e.g. cpu_load)
     collect_process_info();
+
+    msleep(1000);
 
     // sorting function, default is cpu_load, further should be user specified 
     int (*comp)(struct task_node*, struct task_node*) = compare_cpu_load;
@@ -219,17 +262,22 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
         // insert collected data in right place to make sorted list
         // this will be showed to user
         insert_sorted(&sorted_process_list, curr_node, comp);
+        ++i;
     }
 
     struct task_node* current_data; 
     int k = 0;
-    printk( KERN_DEBUG "myread: list_for_each_entry\n" );                                 
+    printk( KERN_DEBUG "myread: list_for_each_entry\n" );        
+    len  += sprintf(buf, "PID   CPU*100 NAME\n");        
     list_for_each_entry ( current_data, & sorted_process_list, mylist ) 
     { 
         printk( KERN_DEBUG "myread: list_for_each_entry loop\n" );                             
-         if (k == 20)
+         if (k == 53)
              break;
-         len  += sprintf(buf+len, "cpu_load = %10d\n" , current_data->data->task->pid );
+         len  += sprintf(buf+len, "%7d %10d %14s\n" , current_data->data->task->pid
+                                               , current_data->data->a_cpu_load->ucpu_load + current_data->data->a_cpu_load->scpu_load
+                                               , current_data->data->task->comm
+                         );
          ++k; 
     }
 
@@ -432,7 +480,7 @@ void ccreate_new_proc_entry(void)
 {
    printk(KERN_INFO "Hello, It is procss_list init!\n");
   
-   ent=proc_create("topik", 0666, NULL, &myops);
+   ent=proc_create("topiko", 0666, NULL, &myops);
   //create_proc_read_entry("ps_list",0,NULL,read_proc,NULL);
 
 }

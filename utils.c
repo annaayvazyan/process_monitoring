@@ -1,15 +1,75 @@
 #include "utils.h"
 
+#include<linux/module.h>
+#include <linux/proc_fs.h>
+#include<linux/sched/signal.h>
+#include <linux/types.h>
+#include <linux/ktime.h>
+#include <asm/param.h>
+#include <linux/sched/cputime.h>
+#include <linux/types.h>
+#include <linux/errno.h>
+#include <linux/time.h>
+#include <linux/kernel_stat.h>
+#include <linux/string.h>
+#include <linux/mman.h>
+#include <linux/sched/mm.h>
+//#include <linux/sched/numa_balancing.h>
+//#include <linux/sched/task_stack.h>
+//#include <linux/sched/task.h>
+#include <linux/sched/cputime.h>
+//#include <linux/proc_fs.h>
+//#include <linux/ioport.h>
+//#include <linux/uaccess.h>
+#include <linux/io.h>
+#include <linux/mm.h>
+#include <linux/signal.h>
+#include <linux/highmem.h>
+#include <linux/file.h>
+#include <linux/fdtable.h>
+#include <linux/times.h>
+#include <linux/cpuset.h>
+#include <linux/rcupdate.h>
+#include <linux/tracehook.h>
+#include <linux/fs_struct.h>
+#include <linux/sched.h> //Needed for the for_each_process() macro
+#include <linux/jiffies.h> //Needed to manage the time
+#include <asm/uaccess.h> //Needed to use copy_to_user
+#include <linux/tty.h>
+#include <linux/linkage.h>
+#include <linux/init.h>		/* Needed for the macros */
+#include <linux/kthread.h>
+#include <linux/slab.h>
+#include <linux/semaphore.h>
+#include <linux/kernel.h>
+#include <linux/delay.h>
 
-
+void set_time_info(struct time_info* tm_info, struct task_struct* tsk)
+{
+    tm_info->utime = tsk->utime;
+    tm_info->stime = tsk->stime;
+    tm_info->start_time = tsk->start_time;
+    tm_info->cutime = 0;
+    tm_info->cstime = 0;
+    if (tsk->signal)
+    {
+        tm_info->cutime = tsk->signal->cutime;
+        tm_info->cstime = tsk->signal->cstime;
+    }
+}
 
 
 int compare_cpu_load(struct task_node* a, struct task_node*b)
 {
+
     printk( KERN_DEBUG "compare_cpu_load:\n" );
     if (a == 0 || b == 0 || a->data == 0 || b->data == 0)
-    return 0;    
-    return a->data->cpu_load - b->data->cpu_load;
+      return 0; 
+
+    printk( KERN_DEBUG "compare_cpu_load: apid=%d bpid=%d\n", a->data->task->pid, b->data->task->pid );
+    printk( KERN_DEBUG "compare_cpu_load: a=%d b=%d\n", a->data->a_cpu_load->ucpu_load + a->data->a_cpu_load->scpu_load, b->data->a_cpu_load->ucpu_load + b->data->a_cpu_load->scpu_load );
+    return (a->data->a_cpu_load->ucpu_load + a->data->a_cpu_load->scpu_load) 
+         - (b->data->a_cpu_load->ucpu_load + b->data->a_cpu_load->scpu_load);
 }
 
 int compare_avg_cpu_load(struct task_node* a, struct task_node*b)
@@ -33,7 +93,7 @@ void insert_sorted(struct list_head* sortedLst, struct task_node* tsk, int (*com
     printk( KERN_DEBUG "insert_sorted: start\n" );    
 
         struct list_head* curr;
-        curr = sortedLst;
+        curr = sortedLst->next;
 
         struct task_node  *curr_data  = NULL ; 
         curr_data = list_entry ( curr, struct task_node, mylist); 
@@ -49,8 +109,14 @@ void insert_sorted(struct list_head* sortedLst, struct task_node* tsk, int (*com
 
         }
     printk( KERN_DEBUG "insert_sorted: adding in list\n" );    
-        list_add( &tsk->mylist, curr ) ; 
+        list_add( &tsk->mylist, curr->prev ) ; 
 }
 
-
+char* cpu_load_to_string(struct cpu_load*c)
+{
+   char *buff = kmalloc(1024, GFP_NOWAIT);
+   int len = 0;
+   len = sprintf(buff+len, "%d %d", c->ucpu_load, c->scpu_load);   
+   return buff;
+}
 
