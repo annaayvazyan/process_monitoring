@@ -5,20 +5,13 @@
 #include <linux/types.h>
 #include <linux/ktime.h>
 
-int compare_cpu_load(collected_data* a, collected_data*b);
-int compare_avg_load(collected_data* a, collected_data*b);
-int compare_cpu_load(collected_data* a, collected_data*b);
-int compare_pid(collected_data* a, collected_data*b);
-
 struct collected_data
 {
     struct task_struct* task;
     u64 cpu_load;
     u64 avg_cpu_load;
     u64 mem_load;
-}
-
-
+};
 
 struct  task_node {
 
@@ -26,6 +19,13 @@ struct  task_node {
      struct list_head mylist;
 };
 
+int compare_cpu_load(struct task_node* a, struct task_node*b);
+int compare_avg_cpu_load(struct task_node* a, struct task_node*b);
+int compare_mem_load(struct task_node* a, struct task_node*b);
+int compare_pid(struct task_node* a, struct task_node*b);
 
-void insert_sorted(struct list_head* sortedLst, struct task_node* tsk, int (*compare)(task_node*, task_node*));
+
+
+
+void insert_sorted(struct list_head* sortedLst, struct task_node* tsk, int (*compare)(struct task_node*, struct task_node*));
 

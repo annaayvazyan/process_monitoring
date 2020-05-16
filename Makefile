@@ -1,8 +1,10 @@
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 
-obj-m := proci.o
+obj-m := topik.o
 
-proci-objs := ./utils.o
+topik-objs := ./utils.o ./proci.o
+
+
 
 PWD := $(shell pwd)
 

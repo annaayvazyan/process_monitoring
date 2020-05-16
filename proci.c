@@ -67,11 +67,17 @@
 #include <linux/delay.h>
 #include <asm/uaccess.h>
 #include <linux/syscalls.h>
+#include "utils.h"
+
+
 static struct proc_dir_entry *ent;
 
 #define BUFSIZE  1000
 #define MAXPROCCOUNT 2000
 struct task_struct* tasks [MAXPROCCOUNT];
+
+DECLARE_HASHTABLE(task_hash, 12);
+
 
 int read_proc(char *buf,char **start,off_t offset,int count,int *eof,void *data )
 {
@@ -92,6 +98,14 @@ int read_proc(char *buf,char **start,off_t offset,int count,int *eof,void *data 
 }
 
 
+struct h_struct {
+    struct task_struct* data;
+    int state;
+    /* other driver specific fields */
+    struct hlist_node node;
+};
+
+
 
 static ssize_t mywrite(struct file *file, const char __user *ubuf, size_t count, loff_t *ppos) 
 {
@@ -99,7 +113,7 @@ static ssize_t mywrite(struct file *file, const char __user *ubuf, size_t count,
 
 	printk( KERN_DEBUG "write handler\n");
 	int num,c,i,m;
-	char *buf = kmalloc(BUFSIZE*50, 0);
+	char *buf = kmalloc(BUFSIZE*50, GFP_NOWAIT);
 	if(*ppos > 0 || count > BUFSIZE)
 		return -EFAULT;
 	if(raw_copy_from_user(buf,ubuf,count))
@@ -136,10 +150,36 @@ u64 nsec_to_clock_t(u64 x)
 	return div_u64(x * 9, (9ull * NSEC_PER_SEC + (USER_HZ / 2)) / USER_HZ);
 #endif
 }
+
+void collect_process_info(void)
+{
+    struct task_struct* curr;
+	for_each_process(curr) {
+		printk( KERN_DEBUG "collect_process_info: pid = %10d, command = %15s\n", curr->pid, curr->comm);        
+        struct h_struct *task = kmalloc(sizeof(struct h_struct), GFP_NOWAIT);
+        //task->data = tasks[210];
+        task->data = curr;
+        task->state = 1; // alive
+        hash_add(task_hash, &task->node, task->data->pid);
+    }
+}
+
+
+struct collected_data * collect_info_for_process (struct task_struct* tsk)
+{
+    struct collected_data *coll = kmalloc(sizeof(struct collected_data), GFP_NOWAIT);
+    coll->cpu_load = 97;
+    coll->mem_load = 9644;
+    coll->task = tsk;
+    return coll; 
+}
+
+
 static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t *ppos) 
 {
-	char *buf = kmalloc(BUFSIZE*1000, 0);
-	printk( KERN_DEBUG "read handler\n");
+
+	printk( KERN_DEBUG "myread :\n");
+	char *buf = kmalloc(BUFSIZE*100, GFP_NOWAIT);
 	if(*ppos > 0 || count < BUFSIZE)
 		return 0;
 	//len += sprintf(buf,"irq = %d\n",irq);
@@ -147,32 +187,53 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
 	//len += sprintf(buf + len,"bufzise = %d\n", BUFSIZE);
 
 	int len=0;
-	struct task_struct *task_list;
-	int i = 300;
-        int j = 0;
 
+    printk( KERN_DEBUG "myread: calling collect_process_info\n" );
+    // collect data of processes once to use it in further calculations( e.g. cpu_load)
+    collect_process_info();
 
-		u64 utime_s = 0; 
-		u64 stime_s = 0; 
+    // sorting function, default is cpu_load, further should be user specified 
+    int (*comp)(struct task_node*, struct task_node*) = compare_cpu_load;
 
-		u64 total_time_s = 0;	
-	
-		u64 uptime_s = 0; // checked
+    printk( KERN_DEBUG "myread: initing sorted_process_list\n" );    
+    // this list is used to keep sorted processes using comp function
+    LIST_HEAD(sorted_process_list) ;
 
+    printk( KERN_DEBUG "myread: starting main loop\n" );    
+	struct task_struct *curr;
+    int i = 0;    
+    // main loop
+	for_each_process(curr) {
+    
+        printk( KERN_DEBUG "myread: in loop i=%4d, pid=%10d, command=%15s\n", i, curr->pid, curr->comm );            
+        // collect/compute data about process (all data printed)
+        printk( KERN_DEBUG "myread: calling collect_info_for_process\n" );                    
+        struct collected_data *collected = collect_info_for_process(curr);
+        
+        // init task_node with collected data to insert it in soreted list
+        struct  task_node* curr_node = kmalloc(sizeof(struct task_node), GFP_NOWAIT);
+        curr_node->data = collected;
+        INIT_LIST_HEAD( & curr_node->mylist ) ;
+       
+        printk( KERN_DEBUG "myread: calling insert_sorted\n" );                     
+        // insert collected data in right place to make sorted list
+        // this will be showed to user
+        insert_sorted(&sorted_process_list, curr_node, comp);
+    }
+
+    struct task_node* current_data; 
+    int k = 0;
+    printk( KERN_DEBUG "myread: list_for_each_entry\n" );                                 
+    list_for_each_entry ( current_data, & sorted_process_list, mylist ) 
+    { 
+        printk( KERN_DEBUG "myread: list_for_each_entry loop\n" );                             
+         if (k == 20)
+             break;
+         len  += sprintf(buf+len, "cpu_load = %10d\n" , current_data->data->task->pid );
+         ++k; 
+    }
 
 /*
-	for_each_process(task_list) {
-
-		utime_s = task_list->utime;
-		stime_s = task_list->stime;
-
-		total_time_s = total_time_s + task_list->signal->cutime + task_list->signal->cstime;
-		total_time_s = ktime_divns(total_time_s, NSEC_PER_SEC);
-
-		uptime_s = ktime_divns(ktime_get_coarse_boottime(), NSEC_PER_SEC); // checked
-
-	}
-	*/
 	int k = 0;
 	for_each_process(task_list) {
 		if (tasks[k] == 0)
@@ -190,17 +251,17 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
 				task_list->cred->uid,
 				task_list->prio
 				,task_list->acct_vm_mem1
-				/*,task_list->mm->total_vm*/
-				/*,task_list->active_mm->total_vm*/	);
+				,task_list->mm->total_vm
+				,task_list->active_mm->total_vm	);
 		
-		len  += sprintf(buf+len, "read handler1, pComm = %s, pid = %d, user = %d, priority = %d, acct_vm_mem1 = %d\n" ,
+		len  += sprintf(buf+len, "read handler1, pComm = %20s, pid = %10d, user = %10d, priority = %5d, acct_vm_mem1 = %10d\n" ,
 				task_list->comm,
 				task_list->pid, 
 				task_list->cred->uid,
 				task_list->prio
 				,task_list->acct_vm_mem1
-				/*,task_list->mm->total_vm*/
-				/*,task_list->active_mm->total_vm*/);
+				,task_list->mm->total_vm
+				,task_list->active_mm->total_vm);
 		
 		if (task_list->mm)
 			printk( KERN_DEBUG "total_vm = %d\n", task_list->mm->total_vm);
@@ -208,7 +269,7 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
 			printk( KERN_DEBUG "total_vm = %d\n", task_list->active_mm->total_vm);
 
 
-		/*
+		
 		u64 utime_ = ktime_divns(task_list->utime, MSEC_PER_SEC);
 		u64 stime_ = ktime_divns(task_list->stime, MSEC_PER_SEC);
 		u64 total_time = utime_ + stime_;
@@ -239,9 +300,9 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
 		//thread_group_cputime_adjusted(task_list, &Utime, &Stime);
  		ktime_t jiff = Utime + Stime;
 		u64 secs = jiff/HZ;
-		*/
+		
 
-                u64 utime = task_list->utime;
+        u64 utime = task_list->utime;
 		u64 stime = task_list->stime;
 		u64 utime_jiffies = nsecs_to_jiffies(utime);
 		u64 stime_jiffies = nsecs_to_jiffies(stime);
@@ -249,36 +310,36 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
 		u64 utime_ = ktime_divns(task_list->utime, MSEC_PER_SEC);
 		u64 stime_ = ktime_divns(task_list->stime, MSEC_PER_SEC);
 
-		total_time = ktime_divns((total_time + task_list->signal->cutime + task_list->signal->cstime), NSEC_PER_SEC);
+		total_time = ktime_divns((total_time + task_list->signal->cutime + task_list->signal->cstime), MSEC_PER_SEC);
 		//if (task_list->signal)
 		 // total_time = total_time + ktime_divns(task_list->signal->cutime, NSEC_PER_SEC) +  ktime_divns(task_list->signal->cstime, NSEC_PER_SEC);
     		
 		u64  uptime;
-    		uptime = ktime_divns(ktime_get_coarse_boottime(), NSEC_PER_SEC); // checked
+    		uptime = ktime_divns(ktime_get_coarse_boottime(), MSEC_PER_SEC); // checked
 		u64 start_ =  task_list->start_time; //ktime_divns(task_list->start_time, NSEC_PER_SEC); // checked
-                u64 start = ktime_divns(start_, NSEC_PER_SEC);
-		u64 seconds = uptime - start /*(task_list->start_time /(NSEC_PER_SEC * HZ))*/;
+                u64 start = ktime_divns(start_, MSEC_PER_SEC);
+		u64 seconds = uptime - start;
 
 
                 u64 cpu_usage = 0;
 	        if (seconds != 0)
 		  cpu_usage = ((total_time * 10000) / seconds);
-	        printk( KERN_DEBUG "utime = %ld, stime=%ld, utime_ = %ld, stime_=%ld\n", utime, stime, utime_, stime_ /*task_list->vtime->utime, task_list->vtime->stime*/ );
+	        printk( KERN_DEBUG "utime = %ld, stime=%ld, utime_ = %ld, stime_=%ld\n", utime, stime, utime_, stime_  );
 
                 utime = nsec_to_clock_t(utime);
 	        stime = nsec_to_clock_t(stime);
 
 
 
-		utime_s = task_list->utime;
-		stime_s = task_list->stime;
+		u64 utime_s = task_list->utime;
+		u64 stime_s = task_list->stime;
 
-		total_time_s = utime_s + stime_s;
+		u64 total_time_s = utime_s + stime_s;
 
 		total_time_s = total_time_s + task_list->signal->cutime + task_list->signal->cstime;
 		total_time_s = ktime_divns(total_time_s, NSEC_PER_MSEC);
 
-		uptime_s = ktime_divns(ktime_get_coarse_boottime(), NSEC_PER_MSEC); // checked
+		u64 uptime_s = ktime_divns(ktime_get_coarse_boottime(), NSEC_PER_MSEC); // checked
 		//uptime_s = ktime_get_coarse_boottime(); // checked
 
 
@@ -302,7 +363,7 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
                 	//cpuUsage = (total_time_e - total_time_s)* 10000/(uptime_e - uptime_s); // asctual cpu usage
                 	cpuUsage = (total_time_e - total_time_s)* 10000/(uptime_e - uptime_s); // asctual cpu usage
 
-                len  += sprintf(buf+len, "com=%s, pid=%d, CPU usage * 100 =%lld, CPU average usage * 100 = %lld,  seconds=%lld\n"
+                len  += sprintf(buf+len, "com=%20s, pid=%10d, CPU usage * 100 =%10lld, CPU average usage * 100 = %10lld,  seconds=%10lld\n"
 				,task_list->comm
 				,task_list->pid
 				,cpuUsage
@@ -331,14 +392,14 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
 	//void * stuff;
 	//stuff = kmalloc(BUFSIZE, GFP_KERNEL);
 	//char* st = (char*)stuff;
-	//*st = 'a'; *(st + 1) = 'r'; *(st + 2) = 'n', *(st + 3) = 'b'; *(st + 4) = '\0';
+	//st = 'a'; *(st + 1) = 'r'; *(st + 2) = 'n', *(st + 3) = 'b'; *(st + 4) = '\0';
 
         //len += sprintf(buf + len, "Allocation finished! %zu, the range is %p-%p\n", ksize(stuff), stuff, stuff + ksize(stuff) - 1);
         //len += sprintf(buf + len, "String written in alocated mem is %s\n", st);
 
 	
  	//kfree(stuff);
-
+*/
 
 
 	if(raw_copy_to_user(ubuf,buf,len))
@@ -365,17 +426,19 @@ static struct file_operations myops =
 	.read = myread,
 	.write = mywrite,
 };
-void ccreate_new_proc_entry(void);
+
+
 void ccreate_new_proc_entry(void)
 {
    printk(KERN_INFO "Hello, It is procss_list init!\n");
   
-   ent=proc_create("proci", 0666, NULL, &myops);
+   ent=proc_create("topik", 0666, NULL, &myops);
   //create_proc_read_entry("ps_list",0,NULL,read_proc,NULL);
 
 }
 
-DECLARE_HASHTABLE(data_hash, 10);
+
+
 //hash_init(data_hash, 1000);
 //
 
@@ -385,17 +448,9 @@ struct struu {
 	int b;
 };
 
-
-struct h_struct {
-    int key;
-    struct task_struct* data;
-    int state;
-    /* other driver specific fields */
-    struct hlist_node node;
-};
-
-int functn_init (void) {
+int functn_initi (void) {
     int ret = 0;
+    printk(KERN_INFO "HIIII\n");
    
     ccreate_new_proc_entry();
     int i = 0;
@@ -410,17 +465,16 @@ int functn_init (void) {
 	    tasks[i] = cur;
 	    ++i;
     }
-    struct h_struct *h = kmalloc(sizeof(struct h_struct), 0);
-    h->key = 1439;
-    h->data = tasks[210];
-    h->state = 1;
+    //struct h_struct *h = kmalloc(sizeof(struct h_struct), 0);
+    //h->data = tasks[210];
+    //h->state = 1;
 
-    hash_add(data_hash, &h->node, h->key);
-    struct h_struct *el;
-    struct hlist_node* nd;
-    int bkt =0;
-    hash_for_each(data_hash, bkt, el, node)
-      printk(KERN_INFO "hash bkt=%d, key=%d, stat=%d, pid=%lld, comm=%s\n",bkt, el->key, el->state, el->data->pid, el->data->comm);
+    //hash_add(data_hash, &h->node, h->key);
+    //struct h_struct *el;
+    //struct hlist_node* nd;
+    //int bkt =0;
+    //hash_for_each(data_hash, bkt, el, node)
+      //printk(KERN_INFO "hash bkt=%d, key=%d, stat=%d, pid=%lld, comm=%s\n",bkt, el->key, el->state, el->data->pid, el->data->comm);
 
 
 
@@ -432,5 +486,5 @@ void functn_cleanup(void) {
 }
 
 MODULE_LICENSE("GPL");   
-module_init(functn_init);
+module_init(functn_initi);
 module_exit(functn_cleanup);
