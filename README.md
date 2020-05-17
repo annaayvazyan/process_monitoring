@@ -1,6 +1,6 @@
 # Process Monitoring
 
-Write process monitoring tool by writing a kernel module which will add new /proc entry to hold information about processes.
+Process monitoring tool which works by creating a kernel module which adds new /proc entry holding the information about processes.
 
 ## Getting Started
 First clone the repo. Afer run the following commands
