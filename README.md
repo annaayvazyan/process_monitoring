@@ -8,7 +8,7 @@ First clone the repo. Afer run the following commands
 make   # this will create monitor.ko file
 sudo insmod monitor.ko  # insert monitor.ko module to your kernel
 ```
-**Now you** have monitor module inserted. Inserting monitor.ko module will create /proc/monitor entry.
+Now you have **monitor** module inserted. Inserting monitor.ko module will create /proc/monitor entry.
 To ensure you can do
 ```
 lc /proc
