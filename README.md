@@ -111,9 +111,15 @@ Then the information is printed by iterating over the sorted linked list.
     Fucntion computes using uptime of the system and start_time of the task, exec_time = uptime -start_time
 - NAME - is the command name which created the process, is taken form task_struct->comm
 
+## Used Data structures
 
+- doubly linked list (kernel)
+- hash table (kernel)
+Will add descriptions
 
+## Demo
 
+![](https://github.com/annaayvazyan/process_monitoring/blob/master/sceenshots/monitor_demo.gif)
 
 
 ## Authors
