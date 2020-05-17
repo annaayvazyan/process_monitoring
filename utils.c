@@ -63,6 +63,7 @@ int compare_cpu_load(struct task_node* a, struct task_node*b)
 {
 
     printk( KERN_DEBUG "compare_cpu_load:\n" );
+    /*
     if (a == 0 )
        printk( KERN_DEBUG "a is null\n");
     if  (b == 0)
@@ -79,12 +80,15 @@ int compare_cpu_load(struct task_node* a, struct task_node*b)
        printk( KERN_DEBUG "a->data->task is null\n");
     if ( b->data->task == 0)
        printk( KERN_DEBUG "b->data->task is null\n");
+    */
 
 
-     if (a == 0 || b == 0 || a->data == 0 || b->data == 0 || a->data->a_cpu_load == 0 || b->data->a_cpu_load == 0 || a->data->task == 0 || b->data->task == 0 ) {
-         printk( KERN_DEBUG "returnning null\n" );
-
-      return 0; 
+     if (   a == 0 || b == 0 
+         || a->data == 0 || b->data == 0 
+         || a->data->a_cpu_load == 0 || b->data->a_cpu_load == 0 
+         || a->data->task == 0 || b->data->task == 0 ) {
+         printk( KERN_DEBUG "compare_cpu_load : returning 0\n" );
+        return 0; 
      }
 
     printk( KERN_DEBUG "compare_cpu_load: apid=%d bpid=%d\n", a->data->task->pid, b->data->task->pid );

@@ -1,4 +1,3 @@
-
 #include<linux/module.h>
 #include <linux/proc_fs.h>
 #include<linux/sched/signal.h>
@@ -13,13 +12,7 @@
 #include <linux/string.h>
 #include <linux/mman.h>
 #include <linux/sched/mm.h>
-//#include <linux/sched/numa_balancing.h>
-//#include <linux/sched/task_stack.h>
-//#include <linux/sched/task.h>
 #include <linux/sched/cputime.h>
-//#include <linux/proc_fs.h>
-//#include <linux/ioport.h>
-//#include <linux/uaccess.h>
 #include <linux/io.h>
 #include <linux/mm.h>
 #include <linux/signal.h>
@@ -45,46 +38,25 @@
 #include "utils.h"
 
 
-static struct proc_dir_entry *ent;
 
 #define BUFSIZE  1000
 #define MAXPROCCOUNT 2000
-struct task_struct* tasks [MAXPROCCOUNT];
-
-DECLARE_HASHTABLE(task_hash, 12);
-const char * entry_name = "pah";
-
-int read_proc(char *buf,char **start,off_t offset,int count,int *eof,void *data )
-{
-	int len=0;
-	struct task_struct *task_list;
+static struct proc_dir_entry *ent;
+DECLARE_HASHTABLE(task_hash, 10);  //is used to keep process info for some calculations (e.g. cpu_load)
+const char * entry_name = "monitor";
 
 
-	int i = 0;
-	for_each_process(task_list) {
-
-		if (i == 7)
-			break;
-		i++;
-       		len  += sprintf(buf+len, "\n %s %d \n",task_list->comm,task_list->pid);
- 	}
-  
-	return len;
-}
-
-
-struct h_struct {
-    //struct task_struct* data;
-    u64 pid;
-    struct time_info* tm_info; //is kept for calculating cpu_load for each proc
-    int state;
-    
-    
-    struct hlist_node node;
-};
+/////////////////////////////////////////////////////////
+// options that in further should be passed as argument//
+// //////////////////////////////////////////////////////
+int (*ARG_SORTING_COMP)(struct task_node*, struct task_node*) = compare_cpu_load; // sorting function, default is cpu_load, further should be user specified 
+int ARG_PROCES_COUNT_TO_BE_TRACKED = PRINTED_PROC_COUNT; // how many processes should be printed
+pid_t ARG_PID = 0; // pid shoud be tracked
 
 
 
+
+// this function will be used to pass arguments from user
 static ssize_t mywrite(struct file *file, const char __user *ubuf, size_t count, loff_t *ppos) 
 {
 
@@ -111,8 +83,6 @@ static ssize_t mywrite(struct file *file, const char __user *ubuf, size_t count,
 }
 
 
-
-
 void collect_process_info(void)
 {
     printk( KERN_DEBUG "collect_process_info : ");            
@@ -125,14 +95,13 @@ void collect_process_info(void)
             return;            
         }
             
-        //task->data = tasks[210];
         task->tm_info = kmalloc(sizeof(struct time_info), GFP_KERNEL);
         if (!task->tm_info) {
             printk( KERN_DEBUG "task->tm_info = kmalloc(sizeof(struct time_info), GFP_KERNEL)");
             return;  
         }
         set_time_info(task->tm_info, curr);
-        task->tm_info->uptime = ktime_get_coarse_boottime(); // kep for each process to be accurate in cpu_load calculation
+        task->tm_info->uptime = ktime_get_coarse_boottime(); // keep for each process to be accurate in cpu_load calculation
         task->state = 1; // alive
         task->pid = curr->pid;
         hash_add(task_hash, &task->node, task->pid);
@@ -206,7 +175,6 @@ void compute_cpu_loads(struct collected_data * col_data)
     hash_for_each_possible(task_hash, entry, node, col_data->task->pid) {
         if (entry->pid == col_data->task->pid) {
 	        printk( KERN_DEBUG "compute_cpu_loads : hash_for_each_possible loop pid=%d, utime=%d, stime=%d\n", entry->pid, entry->tm_info->utime, entry->tm_info->stime);
-	        printk( KERN_DEBUG "compute_cpu_loads : calling set_time_info\n");  
             time_info_s = *(entry->tm_info);
             break;
         }
@@ -267,20 +235,19 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
 	char *buf = kmalloc(BUFSIZE*100, GFP_KERNEL);
 	if(!buf || *ppos > 0 || count < BUFSIZE)
 		return 0;
-	//len += sprintf(buf,"irq = %d\n",irq);
-	//len += sprintf(buf + len,"mode = %d\n",mode);
-	//len += sprintf(buf + len,"bufzise = %d\n", BUFSIZE);
-
-	int len=0;
+	
+    int len=0;
 
     printk( KERN_DEBUG "myread: calling collect_process_info\n" );
     // collect data of processes once to use it in further calculations( e.g. cpu_load)
     collect_process_info();
 
-    msleep(1000);
+    
+    
+    msleep(SLEEP); // sleep a second to be able to compute cpu_laod
 
-    // sorting function, default is cpu_load, further should be user specified 
-    int (*comp)(struct task_node*, struct task_node*) = compare_cpu_load;
+
+
 
     printk( KERN_DEBUG "myread: initing sorted_process_list\n" );    
     // this list is used to keep sorted processes using comp function
@@ -309,18 +276,18 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
         printk( KERN_DEBUG "myread: calling insert_sorted\n" );                     
         // insert collected data in right place to make sorted list
         // this will be showed to user
-        insert_sorted(&sorted_process_list, curr_node, comp);
+        insert_sorted(&sorted_process_list, curr_node, ARG_SORTING_COMP);
         ++i;
     }
 
     struct task_node* current_data; 
     int k = 0;
     printk( KERN_DEBUG "myread: list_for_each_entry\n" );        
-    len  += sprintf(buf, "\n    PID   USR  PR SPR   CPU*100    AVGCPU    MEM*100     TIME+             NAME\n");        
+    len  += sprintf(buf, "\n    PID   USR  PR SPR   CPU*100    AVGCPU    MEM*100     TIME+            NAME\n");        
     list_for_each_entry ( current_data, & sorted_process_list, mylist ) 
     { 
         printk( KERN_DEBUG "myread: list_for_each_entry loop\n" );                             
-         if (k == PRINTED_PROC_COUNT)
+         if (k == ARG_PROCES_COUNT_TO_BE_TRACKED)
              break;
             
         u64 pid = 0;
@@ -352,21 +319,17 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
         }
  
          len  += sprintf(buf+len, "%7d %5d %3d %3d %9d %9d %10d %9s %15s\n" 
-                                                    , pid
-                                                    , user
-                                                    , prio
-                                                    , sprio
-                                                    , cpu_load
-                                                    , avg_cpu_load
-                                                    , mem_load
-                                                    , exec_time
-                                                    , comm
-                                                    //, current_data->data->task->acct_vm_mem1
-                                                    //, current_data->data->task->mm->total_vm
-                                                    //, current_data->data->task->active_mm->total_vm
+                                                                          , pid
+                                                                          , user
+                                                                          , prio
+                                                                          , sprio
+                                                                          , cpu_load
+                                                                          , avg_cpu_load
+                                                                          , mem_load
+                                                                          , exec_time
+                                                                          , comm
 
                          );
-
 
 
 
@@ -416,15 +379,6 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
 	return len;
 }
 
-
-/*
-static ssize_t myread(struct file *file, char __user *ubuf,size_t count, loff_t *ppos) 
-{
-	printk( KERN_DEBUG "read handler\n");
-	return 0;
-}
- */
-
 static struct file_operations myops = 
 {
 	.owner = THIS_MODULE,
@@ -435,54 +389,15 @@ static struct file_operations myops =
 
 void ccreate_new_proc_entry(void)
 {
-   printk(KERN_INFO "Hello, It is procss_list init!\n");
-  
+   printk(KERN_INFO "ccreate_new_proc_entry : calling proc_create\n");
    ent=proc_create(entry_name, 0666, NULL, &myops);
-  //create_proc_read_entry("ps_list",0,NULL,read_proc,NULL);
-
 }
 
 
-
-//hash_init(data_hash, 1000);
-//
-
-struct struu {
-
-	int a;
-	int b;
-};
-
 int functn_initi (void) {
     int ret = 0;
-    printk(KERN_INFO "HIIII\n");
-   
+    printk(KERN_INFO "functn_initi : HI\n");
     ccreate_new_proc_entry();
-    int i = 0;
-    for (; i < MAXPROCCOUNT; ++i)
-	    tasks[i] = 0;
-
-    struct struu s;
-
-    i = 0;
-    struct task_struct* cur;
-    for_each_process(cur) {
-	    tasks[i] = cur;
-	    ++i;
-    }
-    //struct h_struct *h = kmalloc(sizeof(struct h_struct), 0);
-    //h->data = tasks[210];
-    //h->state = 1;
-
-    //hash_add(data_hash, &h->node, h->key);
-    //struct h_struct *el;
-    //struct hlist_node* nd;
-    //int bkt =0;
-    //hash_for_each(data_hash, bkt, el, node)
-      //printk(KERN_INFO "hash bkt=%d, key=%d, stat=%d, pid=%lld, comm=%s\n",bkt, el->key, el->state, el->data->pid, el->data->comm);
-
-
-
     return ret;
 }
 

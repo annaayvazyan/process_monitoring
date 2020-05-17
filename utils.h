@@ -44,6 +44,14 @@ struct  task_node {
      struct list_head mylist;
 };
 
+struct h_struct {
+    u64 pid;
+    int state; // is kept for futher optimizations
+    struct time_info* tm_info; //is kept for calculating cpu_load for each proc
+    
+    struct hlist_node node;
+};
+
 int compare_cpu_load(struct task_node* a, struct task_node*b);
 int compare_avg_cpu_load(struct task_node* a, struct task_node*b);
 int compare_mem_load(struct task_node* a, struct task_node*b);

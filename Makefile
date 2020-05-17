@@ -1,8 +1,8 @@
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 
-obj-m := pah.o
+obj-m := monitor.o
 
-pah-objs := ./utils.o ./proci.o
+monitor-objs := ./utils.o ./proci.o
 
 
 
