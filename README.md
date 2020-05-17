@@ -112,10 +112,10 @@ Then the information is printed by iterating over the sorted linked list.
 - NAME - is the command name which created the process, is taken form task_struct->comm
 
 ## Used Data structures
-
+Will add the descriptions
 - doubly linked list (kernel)
 - hash table (kernel)
-Will add descriptions
+
 
 ## Demo
 
@@ -125,7 +125,7 @@ Will add descriptions
 Add possibility to pass arguments to the module
 - -p - process id to be tracked
 - -s - sorting type
-etc
+- etc
 
 ## Authors
 Anna Ayvazyan
