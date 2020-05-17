@@ -121,6 +121,11 @@ Will add descriptions
 
 ![](https://github.com/annaayvazyan/process_monitoring/blob/master/sceenshots/monitor_demo.gif)
 
+## Further steps
+Add possibility to pass arguments to the module
+- -p - process id to be tracked
+- -s - sorting type
+etc
 
 ## Authors
 Anna Ayvazyan
