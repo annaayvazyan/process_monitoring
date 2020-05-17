@@ -88,7 +88,7 @@ void collect_process_info(void)
     printk( KERN_DEBUG "collect_process_info : ");            
     struct task_struct* curr;
 	for_each_process(curr) {
-		printk( KERN_DEBUG "collect_process_info : pid = %10d, command = %15s\n, utime=%d, stime=%d", curr->pid, curr->comm, curr->utime, curr->stime);        
+		printk( KERN_DEBUG "collect_process_info : pid = %10d, command = %15s\n, utime=%lld, stime=%lld", curr->pid, curr->comm, curr->utime, curr->stime);        
         struct h_struct *task = kmalloc(sizeof(struct h_struct), GFP_KERNEL);
         if (!task) {
             printk( KERN_DEBUG "h_struct *task = kmalloc(sizeof(struct h_struct), GFP_KERNEL)");
@@ -119,19 +119,19 @@ struct cpu_load* compute_cpu_load(struct time_info* time_info_s, struct time_inf
     a_cpu_load->scpu_load = 0;
 
     u64 interval =  time_info_e->uptime - time_info_s->uptime;
-	printk( KERN_DEBUG "compute_cpu_load : interval=%d\n", interval);
+	printk( KERN_DEBUG "compute_cpu_load : interval=%lld\n", interval);
 
     if (interval == 0)
         return a_cpu_load;
 
     u64 total_utime_s = time_info_s->utime + time_info_s->cutime;
     u64 total_utime_e = time_info_e->utime + time_info_e->cutime;
-	printk( KERN_DEBUG "compute_cpu_load : total_utime_s=%d total_utime_e=%d\n", total_utime_s, total_utime_e);    
+	printk( KERN_DEBUG "compute_cpu_load : total_utime_s=%lld total_utime_e=%lld\n", total_utime_s, total_utime_e);    
     u64 u_cpu_usage = (total_utime_e - total_utime_s)* 10000/(interval); // actual cpu usage in user space
 
     u64 total_stime_s = time_info_s->stime + time_info_s->cstime;
     u64 total_stime_e = time_info_e->stime + time_info_e->cstime;
-	printk( KERN_DEBUG "compute_cpu_load : total_stime_s=%d total_stime_e=%d\n", total_stime_s, total_stime_e);        
+	printk( KERN_DEBUG "compute_cpu_load : total_stime_s=%lld total_stime_e=%lld\n", total_stime_s, total_stime_e);        
     u64 s_cpu_usage = (total_stime_e - total_stime_s)* 10000/(interval); // actual cpu usage in user space
     a_cpu_load->ucpu_load = u_cpu_usage;
     a_cpu_load->scpu_load = s_cpu_usage;
@@ -174,7 +174,7 @@ void compute_cpu_loads(struct collected_data * col_data)
 	printk( KERN_DEBUG "compute_cpu_loads : hash_for_each_possible\n");
     hash_for_each_possible(task_hash, entry, node, col_data->task->pid) {
         if (entry->pid == col_data->task->pid) {
-	        printk( KERN_DEBUG "compute_cpu_loads : hash_for_each_possible loop pid=%d, utime=%d, stime=%d\n", entry->pid, entry->tm_info->utime, entry->tm_info->stime);
+	        printk( KERN_DEBUG "compute_cpu_loads : hash_for_each_possible loop pid=%lld, utime=%lld, stime=%lld\n", entry->pid, entry->tm_info->utime, entry->tm_info->stime);
             time_info_s = *(entry->tm_info);
             break;
         }
@@ -318,7 +318,7 @@ static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t
             }
         }
  
-         len  += sprintf(buf+len, "%7d %5d %3d %3d %9d %9d %10d %9s %15s\n" 
+         len  += sprintf(buf+len, "%7lld %5lld %3lld %3lld %9lld %9lld %10lld %9s %15s\n" 
                                                                           , pid
                                                                           , user
                                                                           , prio
