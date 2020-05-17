@@ -14,13 +14,7 @@
 #include <linux/string.h>
 #include <linux/mman.h>
 #include <linux/sched/mm.h>
-//#include <linux/sched/numa_balancing.h>
-//#include <linux/sched/task_stack.h>
-//#include <linux/sched/task.h>
 #include <linux/sched/cputime.h>
-//#include <linux/proc_fs.h>
-//#include <linux/ioport.h>
-//#include <linux/uaccess.h>
 #include <linux/io.h>
 #include <linux/mm.h>
 #include <linux/signal.h>
@@ -151,6 +145,7 @@ char* exec_time_to_string(u64 exec_time)
     u64 minutes = exec_time / 60;
     u64 hours =  minutes / 60;
     u64 secs = exec_time % 60;
+    minutes = minutes % 60;
     sprintf(buff, "%3d:%02d:%02d", hours, minutes, secs);
     return buff;
 }
