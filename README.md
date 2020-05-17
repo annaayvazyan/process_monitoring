@@ -5,8 +5,8 @@ Write process monitoring tool by writing a kernel module which will add new /pro
 ## Getting Started
 First clone the repo. Afer run the following commands
 ```
-make   \\this will create monitor.ko file
-sudo insmod monitor.ko  \\ insert monitor.ko module to your kernel
+make   # this will create monitor.ko file
+sudo insmod monitor.ko  # insert monitor.ko module to your kernel
 ```
 **Now you** have monitor module inserted. Inserting monitor.ko module will create /proc/monitor entry.
 To ensure you can do
