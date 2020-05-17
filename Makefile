@@ -1,8 +1,8 @@
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 
-obj-m := topiko.o
+obj-m := pah.o
 
-topiko-objs := ./utils.o ./proci.o
+pah-objs := ./utils.o ./proci.o
 
 
 

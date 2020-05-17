@@ -63,8 +63,29 @@ int compare_cpu_load(struct task_node* a, struct task_node*b)
 {
 
     printk( KERN_DEBUG "compare_cpu_load:\n" );
-    if (a == 0 || b == 0 || a->data == 0 || b->data == 0)
+    if (a == 0 )
+       printk( KERN_DEBUG "a is null\n");
+    if  (b == 0)
+       printk( KERN_DEBUG "b is null\n");
+    if ( a->data == 0)
+       printk( KERN_DEBUG "a->data is null\n");
+    if ( b->data == 0)
+       printk( KERN_DEBUG "b->data is null\n");
+    if (  a->data->a_cpu_load == 0)
+       printk( KERN_DEBUG "a->data->a_cpu_load is null\n");
+    if ( b->data->a_cpu_load == 0)
+       printk( KERN_DEBUG "b->data->a_cpu_load is null\n");
+    if ( a->data->task == 0)
+       printk( KERN_DEBUG "a->data->task is null\n");
+    if ( b->data->task == 0)
+       printk( KERN_DEBUG "b->data->task is null\n");
+
+
+     if (a == 0 || b == 0 || a->data == 0 || b->data == 0 || a->data->a_cpu_load == 0 || b->data->a_cpu_load == 0 || a->data->task == 0 || b->data->task == 0 ) {
+         printk( KERN_DEBUG "returnning null\n" );
+
       return 0; 
+     }
 
     printk( KERN_DEBUG "compare_cpu_load: apid=%d bpid=%d\n", a->data->task->pid, b->data->task->pid );
     printk( KERN_DEBUG "compare_cpu_load: a=%d b=%d\n", a->data->a_cpu_load->ucpu_load + a->data->a_cpu_load->scpu_load, b->data->a_cpu_load->ucpu_load + b->data->a_cpu_load->scpu_load );
@@ -118,5 +139,15 @@ char* cpu_load_to_string(struct cpu_load*c)
    int len = 0;
    len = sprintf(buff+len, "%d %d", c->ucpu_load, c->scpu_load);   
    return buff;
+}
+
+char* exec_time_to_string(u64 exec_time) 
+{
+    char *buff = kmalloc(1024, GFP_NOWAIT);    
+    u64 minutes = exec_time / 60;
+    u64 hours =  minutes / 60;
+    u64 secs = exec_time % 60;
+    sprintf(buff, "%3d:%02d:%02d", hours, minutes, secs);
+    return buff;
 }
 

@@ -7,6 +7,11 @@
 #include <linux/mm.h>
 
 //extern struct ecpu_load;
+#define BUFSIZE  1024
+#define MAXPROCCOUNT 2000
+#define SLEEP 1000  // a second
+#define TOTAL_MEMORY 3931340 // RAM size in kB
+#define PRINTED_PROC_COUNT 53 // PRINTED_PROC_COUNT of processes will be printed
 
 struct cpu_load
 {
@@ -21,6 +26,7 @@ struct collected_data
     struct cpu_load* a_cpu_load;
     struct cpu_load* avg_cpu_load;
     u64 mem_load;
+    u64 exec_time;
 };
 
 struct time_info {
@@ -48,3 +54,4 @@ void set_time_info(struct time_info* tm_info, struct task_struct* tsk);
 void insert_sorted(struct list_head* sortedLst, struct task_node* tsk, int (*compare)(struct task_node*, struct task_node*));
 
 char* cpu_load_to_string(struct cpu_load*c);
+char* exec_time_to_string(u64 exec_time);
